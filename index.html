@@ -1,0 +1,1198 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Interaktivní mapa obce Bolatice</title>
+
+<!-- Leaflet CSS — lokální kopie z qgis2web, fallback CDN -->
+<link rel="stylesheet" href="css/leaflet.css" onerror="this.onerror=null;this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
+<link rel="stylesheet" href="css/qgis2web.css" onerror="this.remove()">
+<link rel="stylesheet" href="css/fontawesome-all.min.css" onerror="this.remove()">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,400&display=swap" rel="stylesheet">
+
+<style>
+/* ═══════════════════════════════════════════
+   DESIGN SYSTEM — Bolatice Mapa
+═══════════════════════════════════════════ */
+:root {
+  --bg:      #0d1117;
+  --surface: #161b27;
+  --surf2:   #1e2436;
+  --surf3:   #252c42;
+  --border:  #2a3352;
+  --accent:  #3b82f6;
+  --acc2:    #7c3aed;
+  --acc3:    #0ea5e9;
+  --text:    #e2e8f0;
+  --muted:   #7c8aaa;
+  --dim:     #4a5470;
+
+  /* kategorie */
+  --gastro:  #f97316;
+  --sport:   #10b981;
+  --urad:    #3b82f6;
+  --zdravi:  #06b6d4;
+  --sluzby:  #8b5cf6;
+  --obchod:  #f59e0b;
+
+  --r: 10px;
+  --sh: 0 4px 24px rgba(0,0,0,.6);
+  --sh2: 0 2px 10px rgba(0,0,0,.4);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); overflow: hidden; }
+
+/* ─── LAYOUT ─── */
+#app   { display: flex; flex-direction: column; height: 100vh; }
+#map   { flex: 1; z-index: 1; }
+
+/* ─── HEADER ─── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 18px; height: 52px; flex-shrink: 0;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  z-index: 1100; gap: 12px;
+}
+.logo {
+  font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1rem;
+  letter-spacing: -.3px; display: flex; align-items: center; gap: 9px;
+  white-space: nowrap;
+}
+.logo-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 8px var(--accent);
+  animation: blink 2.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+@keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+.logo-sub { font-weight:400; color:var(--muted); font-size:.78rem; margin-left:2px; }
+
+/* ── TILE SWITCHER ve headeru ── */
+#tile-switcher {
+  display: flex; gap: 0; border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; flex-shrink: 0;
+}
+.tile-btn {
+  padding: 5px 12px; font-family: 'DM Sans', sans-serif; font-size: .75rem;
+  font-weight: 500; cursor: pointer; border: none; transition: all .18s;
+  display: flex; align-items: center; gap: 5px; white-space: nowrap;
+}
+.tile-btn:first-child { border-right: 1px solid var(--border); }
+.tile-btn.off { background: var(--surf2); color: var(--muted); }
+.tile-btn.on  { background: var(--accent); color: #fff; }
+
+.hbtn {
+  width: 32px; height: 32px; border-radius: 7px; flex-shrink: 0;
+  border: 1px solid var(--border); background: var(--surf2);
+  color: var(--muted); cursor: pointer; font-size: .9rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .18s;
+}
+.hbtn:hover, .hbtn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ─── SIDEBAR ─── */
+#sidebar {
+  position: absolute; top: 52px; left: 0; bottom: 0; width: 288px;
+  z-index: 1000; background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  transform: translateX(0); transition: transform .26s cubic-bezier(.4,0,.2,1);
+}
+#sidebar.closed { transform: translateX(-100%); }
+
+#sb-handle {
+  position: absolute; top: 68px; left: 296px; z-index: 1050;
+  width: 20px; height: 42px; background: var(--surface);
+  border: 1px solid var(--border); border-left: none;
+  border-radius: 0 7px 7px 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: .6rem;
+  transition: left .26s cubic-bezier(.4,0,.2,1);
+}
+#sb-handle.closed { left: 8px; }
+#sb-handle:hover { color: var(--text); background: var(--surf2); }
+
+/* ─── SIDEBAR HEAD ─── */
+.sb-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.sb-label { font-size: .65rem; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+.sb-search { position: relative; }
+.sb-search input {
+  width: 100%; padding: 7px 10px 7px 32px;
+  background: var(--surf2); border: 1px solid var(--border);
+  border-radius: 7px; color: var(--text); font-family: inherit; font-size: .82rem;
+  outline: none; transition: border-color .18s;
+}
+.sb-search input:focus { border-color: var(--accent); }
+.sb-search input::placeholder { color: var(--dim); }
+.sb-search-i { position: absolute; left: 9px; top: 50%; transform: translateY(-50%); color: var(--dim); font-size: .78rem; pointer-events: none; }
+
+/* ─── SCROLL ─── */
+#sb-scroll { flex: 1; overflow-y: auto; }
+#sb-scroll::-webkit-scrollbar { width: 3px; }
+#sb-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ─── SECTION ─── */
+.sb-sec { padding: 8px 12px 4px; border-top: 1px solid var(--border); }
+.sb-sec-lbl { font-size: .62rem; letter-spacing: 1.3px; text-transform: uppercase; color: var(--dim); margin-bottom: 5px; padding-left: 1px; }
+
+/* ─── QGIS VRSTVY ─── */
+.ql-grp-lbl {
+  font-size: .6rem; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--dim); padding: 5px 1px 2px; margin-top: 3px;
+}
+.ql-row {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 7px; border-radius: 6px; cursor: pointer;
+  transition: background .13s; margin-bottom: 1px;
+}
+.ql-row:hover { background: var(--surf2); }
+.ql-swatch { width: 12px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.ql-name { flex: 1; font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ql-name.dim { color: var(--dim); }
+
+/* ─── TOGGLES ─── */
+.tog { border-radius: 50px; background: var(--border); position: relative; flex-shrink: 0; transition: background .16s; cursor: pointer; }
+.tog.lg { width: 28px; height: 16px; }
+.tog.sm { width: 24px; height: 14px; }
+.tog::after { content: ''; position: absolute; background: #fff; border-radius: 50%; transition: left .16s; }
+.tog.lg::after { width: 12px; height: 12px; top: 2px; left: 2px; }
+.tog.lg.on::after { left: 14px; }
+.tog.sm::after { width: 10px; height: 10px; top: 2px; left: 2px; }
+.tog.sm.on::after { left: 12px; }
+.tog.on { background: var(--accent); }
+.tog.on.v { background: var(--acc2); }
+
+/* ─── KATEGORIE ─── */
+.cat-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 9px; border-radius: 7px; cursor: pointer;
+  transition: background .13s; user-select: none; margin-bottom: 1px;
+}
+.cat-row:hover { background: var(--surf2); }
+.cat-pip { width: 10px; height: 10px; border-radius: 2.5px; flex-shrink: 0; }
+.cat-lbl { font-size: .85rem; font-weight: 500; flex: 1; }
+.cat-cnt { font-size: .7rem; color: var(--muted); background: var(--bg); padding: 2px 6px; border-radius: 20px; }
+.cat-arr { color: var(--dim); font-size: .65rem; transition: transform .18s; }
+.cat-row.x .cat-arr { transform: rotate(90deg); }
+
+.sub-wrap { display: none; padding: 1px 0 3px 30px; }
+.sub-wrap.x  { display: block; }
+.sub-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 7px; border-radius: 6px; cursor: pointer;
+  font-size: .78rem; color: var(--muted); transition: all .13s; margin-bottom: 1px;
+}
+.sub-row:hover { background: var(--surf2); color: var(--text); }
+.sub-row.on { color: var(--text); }
+.sub-pip { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
+
+/* ─── VÝSLEDKY ─── */
+.res-hdr { padding: 7px 14px 4px; font-size: .62rem; letter-spacing: 1.2px; text-transform: uppercase; color: var(--dim); border-top: 1px solid var(--border); }
+#res-list { padding: 2px 9px 10px; }
+.res-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 7px; border-radius: 7px; cursor: pointer;
+  transition: background .13s; margin-bottom: 1px;
+}
+.res-row:hover { background: var(--surf2); }
+.res-ico { width: 28px; height: 28px; border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: .84rem; flex-shrink: 0; }
+.res-info { flex: 1; min-width: 0; }
+.res-name { font-size: .8rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.res-sub  { font-size: .68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ─── LEAFLET POPUP — tmavý ─── */
+.leaflet-popup-content-wrapper {
+  background: var(--surface) !important; border: 1px solid var(--border) !important;
+  border-radius: var(--r) !important; box-shadow: var(--sh) !important;
+  color: var(--text) !important; padding: 0 !important;
+  min-width: 230px !important; max-width: 300px !important;
+}
+.leaflet-popup-tip-container { display: none; } /* čistší bez trojúhelníku */
+.leaflet-popup-content { margin: 0 !important; padding: 0 !important; width: auto !important; }
+.leaflet-popup-close-button { color: var(--muted) !important; top: 9px !important; right: 9px !important; font-size: 16px !important; z-index: 10; }
+
+/* QGIS attr popup */
+.qpop-head {
+  padding: 12px 14px 8px; border-bottom: 1px solid var(--border);
+  font-family: 'Syne', sans-serif; font-weight: 700; font-size: .82rem;
+  display: flex; align-items: center; gap: 6px;
+}
+.qpop-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.qpop-table { width: 100%; border-collapse: collapse; padding: 8px 12px; display: block; font-size: .73rem; }
+.qpop-table tr { border-bottom: 1px solid var(--border); }
+.qpop-table tr:last-child { border: none; }
+.qpop-table td { padding: 4px 5px; vertical-align: top; line-height: 1.35; }
+.qpop-table td:first-child { color: var(--muted); white-space: nowrap; font-size: .67rem; padding-right: 8px; }
+
+/* POI popup */
+.ppop-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: .65rem; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 3px; margin-bottom: 5px;
+}
+.ppop-head { padding: 13px 14px 10px; }
+.ppop-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: .92rem; line-height: 1.3; padding-right: 16px; margin-bottom: 6px; }
+
+/* FOTO v popupu */
+.ppop-photo {
+  width: 100%; height: 140px; object-fit: cover;
+  border-bottom: 1px solid var(--border);
+  display: block; border-radius: var(--r) var(--r) 0 0;
+  cursor: zoom-in;
+}
+.ppop-photo-placeholder {
+  width: 100%; height: 80px;
+  background: linear-gradient(135deg, var(--surf2), var(--surf3));
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem; opacity: .4;
+  border-radius: var(--r) var(--r) 0 0;
+}
+
+.ppop-div { height: 1px; background: var(--border); margin: 6px 0; }
+.ppop-row { display: flex; align-items: flex-start; gap: 6px; margin-bottom: 5px; font-size: .76rem; padding: 0 14px; }
+.ppop-i { color: var(--muted); width: 13px; flex-shrink: 0; margin-top: 1px; text-align: center; }
+.ppop-v a { color: var(--acc3); text-decoration: none; }
+.ppop-v a:hover { text-decoration: underline; }
+.ppop-foot { padding: 8px 12px 12px; border-top: 1px solid var(--border); display: flex; gap: 5px; margin-top: 4px; }
+.ppop-btn {
+  flex: 1; padding: 6px 4px; border-radius: 6px; text-align: center;
+  border: 1px solid var(--border); background: var(--surf2);
+  color: var(--text); font-family: inherit; font-size: .7rem; cursor: pointer;
+  transition: all .15s; white-space: nowrap;
+}
+.ppop-btn:hover { background: var(--accent); border-color: var(--accent); }
+
+/* LIGHTBOX */
+#lightbox {
+  display: none; position: fixed; inset: 0; z-index: 9998;
+  background: rgba(0,0,0,.92); align-items: center; justify-content: center;
+  cursor: zoom-out;
+}
+#lightbox.on { display: flex; }
+#lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,.8); }
+#lightbox-close { position: absolute; top: 16px; right: 20px; color: #fff; font-size: 1.8rem; cursor: pointer; opacity: .7; }
+#lightbox-close:hover { opacity: 1; }
+
+/* ─── TILE INFO CHIP ─── */
+#tile-info {
+  position: absolute; bottom: 38px; right: 52px; z-index: 900;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 6px; padding: 3px 10px; font-size: .66rem; color: var(--muted);
+  pointer-events: none; opacity: 0; transition: opacity .3s; white-space: nowrap;
+}
+#tile-info.show { opacity: 1; }
+
+/* ─── FAB BUTTONS ─── */
+.fab {
+  position: absolute; right: 12px; z-index: 900;
+  width: 32px; height: 32px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--muted); cursor: pointer; font-size: .85rem;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: var(--sh2); transition: all .18s;
+}
+.fab:hover { background: var(--surf2); color: var(--text); }
+.fab.on { color: #fff; }
+#fab-geo { bottom: 92px; } #fab-geo.on  { background: var(--accent); border-color: var(--accent); }
+#fab-msr { bottom: 130px;} #fab-msr.on  { background: var(--acc2);   border-color: var(--acc2); }
+
+/* ─── MEASURE PANEL ─── */
+#msr-panel {
+  display: none; position: absolute; bottom: 56px; left: 50%; transform: translateX(-50%);
+  z-index: 900; background: var(--surface); border: 1px solid var(--acc2);
+  border-radius: 9px; padding: 9px 16px; text-align: center;
+  font-size: .76rem; box-shadow: var(--sh); min-width: 200px;
+}
+#msr-panel.on { display: block; }
+#msr-val { font-family: 'Syne', sans-serif; font-size: 1.05rem; font-weight: 700; color: var(--acc2); }
+#msr-clr { margin-top: 5px; padding: 3px 10px; background: var(--surf2); border: 1px solid var(--border); border-radius: 5px; color: var(--text); cursor: pointer; font-size: .7rem; }
+
+/* ─── DATA BADGE ─── */
+#dbadge {
+  position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+  z-index: 1060; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; padding: 3px 13px; font-size: .66rem; color: var(--muted);
+  pointer-events: none; opacity: .9; transition: opacity 1.2s; white-space: nowrap;
+}
+#dbadge.fade { opacity: 0; }
+
+/* ─── MAP CONTROLS ─── */
+.leaflet-control-zoom {
+  border: 1px solid var(--border) !important; border-radius: 8px !important;
+  overflow: hidden; box-shadow: var(--sh2) !important;
+}
+.leaflet-control-zoom a {
+  background: var(--surface) !important; color: var(--text) !important;
+  border-color: var(--border) !important; width: 32px !important; height: 32px !important; line-height: 32px !important;
+}
+.leaflet-control-zoom a:hover { background: var(--surf2) !important; }
+.leaflet-control-scale-line {
+  background: var(--surface) !important; border: 1px solid var(--acc3) !important;
+  border-top: none !important; color: var(--text) !important;
+  font-family: 'DM Sans', sans-serif !important; font-size: 9px !important;
+  padding: 2px 5px !important; border-radius: 0 0 4px 4px !important;
+}
+.leaflet-attribution-flag { display: none !important; }
+
+/* ─── LOADING ─── */
+#loading {
+  position: fixed; inset: 0; background: var(--bg); z-index: 9999;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; transition: opacity .4s;
+}
+#loading.out { opacity: 0; pointer-events: none; }
+.ld-ring { width: 40px; height: 40px; border: 2.5px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.ld-txt { font-family: 'Syne', sans-serif; font-size: .82rem; color: var(--muted); letter-spacing: 1px; }
+.ld-sub { font-size: .66rem; color: var(--dim); max-width: 260px; text-align: center; }
+
+/* mobile */
+@media (max-width: 580px) {
+  #sidebar { width: 100vw; max-width: 300px; }
+  #sb-handle { display: none; }
+  .logo-sub { display: none; }
+  #tile-switcher .tile-btn { padding: 5px 8px; font-size: .7rem; }
+}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="ld-ring"></div>
+  <div class="ld-txt">Načítám mapu Bolatice</div>
+  <div class="ld-sub" id="ld-sub">Inicializace…</div>
+</div>
+
+<!-- LIGHTBOX pro fotografie -->
+<div id="lightbox" onclick="closeLightbox()">
+  <span id="lightbox-close" onclick="closeLightbox()">✕</span>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<div id="app">
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      Bolatice
+      <span class="logo-sub">/ IS DMVS</span>
+    </div>
+
+    <!-- PŘEPÍNAČ PODKLADOVÝCH MAP — pouze 2 možnosti -->
+    <div id="tile-switcher">
+      <button class="tile-btn on" id="tbtn-ztm" onclick="setTile('ztm')" title="Základní topografická mapa ČÚZK">
+        🗺 ZTM ČÚZK
+      </button>
+      <button class="tile-btn off" id="tbtn-orto" onclick="setTile('orto')" title="Ortofoto ČÚZK">
+        🛰 Ortofoto
+      </button>
+    </div>
+
+    <button class="hbtn" id="sb-hbtn" onclick="toggleSidebar()" title="Panel vrstev">☰</button>
+  </header>
+  <div id="map"></div>
+</div>
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="sb-head">
+    <div class="sb-label">Vrstvy & filtr</div>
+    <div class="sb-search">
+      <span class="sb-search-i">🔍</span>
+      <input type="text" id="search-inp" placeholder="Název, adresa, typ…" oninput="doSearch(this.value)">
+    </div>
+  </div>
+
+  <div id="sb-scroll">
+
+    <!-- QGIS DMVS VRSTVY — dynamicky -->
+    <div class="sb-sec" id="qgis-sec" style="display:none;">
+      <div class="sb-sec-lbl">📂 IS DMVS vrstvy</div>
+      <div id="qgis-layer-list"></div>
+    </div>
+
+    <!-- POI KATEGORIE -->
+    <div class="sb-sec">
+      <div class="sb-sec-lbl">📍 Kategorie POI</div>
+
+      <div class="cat-row" onclick="toggleCat('gastro')">
+        <div class="cat-pip" style="background:var(--gastro)"></div>
+        <span class="cat-lbl">Gastronomie</span>
+        <span class="cat-cnt" id="cnt-gastro">0</span>
+        <div class="tog lg on" id="tog-gastro"></div>
+      </div>
+
+      <div class="cat-row" onclick="toggleCat('zdravi')">
+        <div class="cat-pip" style="background:var(--zdravi)"></div>
+        <span class="cat-lbl">Zdravotnictví</span>
+        <span class="cat-cnt" id="cnt-zdravi">0</span>
+        <div class="tog lg on" id="tog-zdravi"></div>
+      </div>
+
+      <div class="cat-row" onclick="toggleCat('sport')">
+        <div class="cat-pip" style="background:var(--sport)"></div>
+        <span class="cat-lbl">Sport & volný čas</span>
+        <span class="cat-cnt" id="cnt-sport">0</span>
+        <div class="tog lg on" id="tog-sport"></div>
+      </div>
+
+      <div class="cat-row" onclick="toggleCat('urad')">
+        <div class="cat-pip" style="background:var(--urad)"></div>
+        <span class="cat-lbl">Úřady & instituce</span>
+        <span class="cat-cnt" id="cnt-urad">0</span>
+        <div class="tog lg on" id="tog-urad"></div>
+      </div>
+
+      <div class="cat-row" onclick="toggleCat('obchod')">
+        <div class="cat-pip" style="background:var(--obchod)"></div>
+        <span class="cat-lbl">Obchody</span>
+        <span class="cat-cnt" id="cnt-obchod">0</span>
+        <div class="tog lg on" id="tog-obchod"></div>
+      </div>
+
+      <!-- Služby se subkategoriemi -->
+      <div class="cat-row" id="cat-sluzby-hd" onclick="toggleSubList()">
+        <div class="cat-pip" style="background:var(--sluzby)"></div>
+        <span class="cat-lbl">Služby</span>
+        <span class="cat-cnt" id="cnt-sluzby">0</span>
+        <span class="cat-arr" id="arr-sluzby">▶</span>
+        <div class="tog lg on" id="tog-sluzby" onclick="event.stopPropagation();toggleCat('sluzby')"></div>
+      </div>
+      <div class="sub-wrap" id="sub-sluzby"></div>
+    </div>
+
+    <div class="res-hdr">Výsledky — <span id="res-cnt">0</span></div>
+    <div id="res-list"></div>
+  </div>
+</div>
+
+<div id="sb-handle" onclick="toggleSidebar()">◀</div>
+<div id="dbadge">⏳ Načítám…</div>
+<div id="tile-info"></div>
+
+<button class="fab" id="fab-geo" title="Moje poloha" onclick="geolocate()">📍</button>
+<button class="fab" id="fab-msr" title="Měřit vzdálenost" onclick="toggleMsr()">📏</button>
+
+<div id="msr-panel">
+  <div style="color:var(--muted);font-size:.65rem;margin-bottom:3px">DÉLKA TRASY</div>
+  <div id="msr-val">0 m</div>
+  <div style="color:var(--dim);font-size:.65rem;margin-top:3px">klikej body · dvojklik = konec</div>
+  <button id="msr-clr" onclick="clearMsr()">Vymazat</button>
+</div>
+
+<!-- ════════════════════════════════════════════════════
+     JS ZÁVISLOSTI — qgis2web
+     Zkopíruj js/ z qgis2web výstupu, nebo CDN fallback
+════════════════════════════════════════════════════ -->
+<script src="js/qgis2web_expressions.js" onerror="console.warn('qgis2web_expressions.js chybí')"></script>
+<script src="js/leaflet.js" onerror="console.warn('lokální leaflet chybí, načítám CDN')"></script>
+<script>if(typeof L==='undefined'){document.write('<scr'+'ipt src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\/scr'+'ipt>');}</script>
+<script src="js/proj4.js"          onerror="console.warn('proj4 chybí')"></script>
+<script src="js/proj4leaflet.js"   onerror="console.warn('proj4leaflet chybí')"></script>
+<script src="js/Autolinker.min.js" onerror="window.Autolinker=null"></script>
+
+<!-- ════════════════════════════════════════════════════
+     DATA SOUBORY z qgis2web
+     Zkopíruj <script src="data/..."> tagy z tvého
+     vygenerovaného index.html — přidej/odeber dle aktuálního exportu
+════════════════════════════════════════════════════ -->
+<script src="data\ZPSKonstrukn_prvky_objektZkladn_konstrukn_prvek010000029902_hranice_budovy_0.js"></script>
+<script src="data\DIdopravn_stavbydrn_doprava010000001903_obvod_drhy_11.js"></script>
+<script src="data\DIdopravn_stavbysilnin_doprava010000000303_obvod_pozemn_komunikace_12.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000103_budova_2.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000103_budova_4.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000103_budova_17.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000103_budova_20.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000104_budova_1.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000104_budova_3.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000104_budova_13.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000104_budova_19.js"></script>
+<script src="data\ZPSBudovyObjekt_budovy010000000105_budova_18.js"></script>
+<script src="data\ZPSDopravn_stavbyDrn_doprava010000031203_souhrnn_plocha_elezninch_drah_16.js"></script>
+<script src="data\ZPSDopravn_stavbyDrn_doprava010000031204_souhrnn_plocha_elezninch_drah_15.js"></script>
+<script src="data\ZPSDopravn_stavbyDrn_doprava010000031204_souhrnn_plocha_elezninch_drah_30.js"></script>
+<script src="data\ZPSDopravn_stavbyDrn_doprava010000031205_souhrnn_plocha_elezninch_drah_14.js"></script>
+<script src="data\ZPSDopravn_stavbyDrn_doprava010000031205_souhrnn_plocha_elezninch_drah_29.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000503_provozn_plocha_pozemn_komunikace_10.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000503_provozn_plocha_pozemn_komunikace_25.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000504_provozn_plocha_pozemn_komunikace_9.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000505_provozn_plocha_pozemn_komunikace_8.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000505_provozn_plocha_pozemn_komunikace_21.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000703_chodnk_31.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000705_chodnk_32.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000903_cyklostezka_28.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000904_cyklostezka_27.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000000905_cyklostezka_26.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000001103_parkovit_odstavn_plocha_7.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000001103_parkovit_odstavn_plocha_24.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000001104_parkovit_odstavn_plocha_6.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000001104_parkovit_odstavn_plocha_23.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000001105_parkovit_odstavn_plocha_5.js"></script>
+<script src="data\ZPSDopravn_stavbySilnin_doprava010000001105_parkovit_odstavn_plocha_22.js"></script>
+<!-- ↑ PŘIDEJ/ODEBER dle aktuálního qgis2web exportu ↑ -->
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════════════════════════
+//  AUTOLINKER FALLBACK
+// ════════════════════════════════════════════════════════════════
+if(!window.Autolinker) window.Autolinker = { link: s => s };
+const autolinker = window.Autolinker.link
+  ? window.Autolinker
+  : new window.Autolinker({truncate:{length:32,location:'smart'}});
+
+// ════════════════════════════════════════════════════════════════
+//  ČÚZK PODKLADOVÉ MAPY
+//
+//  ZTM  — Základní topografická mapa ČÚZK (WMTS)
+//  Orto — Ortofoto ČÚZK (WMTS)
+//
+//  Dokumentace: https://ags.cuzk.cz/arcgis/rest/services
+//  Podmínky: volné pro nekomerční/akademické využití
+// ════════════════════════════════════════════════════════════════
+const TILES = {
+  ztm: L.tileLayer(
+    'https://ags.cuzk.cz/arcgis/rest/services/ZTM_WM/MapServer/tile/{z}/{y}/{x}',
+    {
+      attribution: '© <a href="https://www.cuzk.cz" target="_blank">ČÚZK</a> — Základní topografická mapa',
+      maxZoom: 20, minZoom: 8,
+      // fallback pokud ČÚZK není dostupný (občas bývá offline)
+      errorTileUrl: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
+    }
+  ),
+  orto: L.tileLayer(
+    'https://ags.cuzk.cz/arcgis/rest/services/ortofoto_wm/MapServer/tile/{z}/{y}/{x}',
+    {
+      attribution: '© <a href="https://www.cuzk.cz" target="_blank">ČÚZK</a> — Ortofotomapa',
+      maxZoom: 20, minZoom: 8,
+      errorTileUrl: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+    }
+  )
+};
+
+// ────────────────────────────────────────────────────────────────
+//  FALLBACK DLAŽDICE pokud ČÚZK server vrátí chybu
+//  (ČÚZK WMTS servery mívají výpadky — záloha Esri/OSM)
+// ────────────────────────────────────────────────────────────────
+const TILES_FALLBACK = {
+  ztm:  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {attribution:'© OpenStreetMap contributors', maxZoom:19}),
+  orto: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {attribution:'© Esri World Imagery', maxZoom:20})
+};
+
+let activeTile = 'ztm';
+let cuzk_ok    = true; // flag zda ČÚZK funguje
+
+// ════════════════════════════════════════════════════════════════
+//  MAP INIT
+// ════════════════════════════════════════════════════════════════
+let mapCRS;
+try {
+  mapCRS = new L.Proj.CRS(
+    'EPSG:3857',
+    '+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +k=1 +units=m +nadgrids=@null +wktext +no_defs',
+    { resolutions:[2800,1400,700,350,175,84,42,21,11.2,5.6,2.8,1.4,0.7,0.35,0.14,0.07] }
+  );
+} catch(e) {
+  mapCRS = L.CRS.EPSG3857;
+}
+
+const map = L.map('map', {
+  crs: mapCRS,
+  center: [49.9207, 17.968],
+  zoom: 15,
+  zoomControl: false,
+  maxZoom: 20, minZoom: 8
+});
+
+L.control.zoom({position:'bottomright'}).addTo(map);
+L.control.scale({position:'bottomleft', imperial:false, metric:true}).addTo(map);
+
+// Přidej výchozí podklad
+TILES.ztm.addTo(map);
+
+// Test dostupnosti ČÚZK — na první tile error přepni na fallback
+TILES.ztm.on('tileerror', function() {
+  if(cuzk_ok) {
+    cuzk_ok = false;
+    console.warn('ČÚZK server nedostupný, přepínám na záložní podklad');
+    map.removeLayer(TILES[activeTile]);
+    TILES_FALLBACK[activeTile].addTo(map);
+    badge('⚠️ ČÚZK nedostupný — použit záložní podklad');
+  }
+});
+
+function setTile(key) {
+  if(activeTile === key) return;
+  // Odeber starý podklad
+  if(cuzk_ok) map.removeLayer(TILES[activeTile]);
+  else         map.removeLayer(TILES_FALLBACK[activeTile]);
+
+  activeTile = key;
+
+  // Přidej nový
+  if(cuzk_ok) TILES[key].addTo(map);
+  else        TILES_FALLBACK[key].addTo(map);
+
+  // QGIS + POI vrstvy zpět navrch
+  qgisLayers.forEach(l=>{ if(l.visible && l.leaflet) l.leaflet.bringToFront(); });
+  poiGroup.bringToFront();
+
+  // UI switcher
+  document.querySelectorAll('.tile-btn').forEach(b=>b.className='tile-btn off');
+  document.getElementById('tbtn-'+key).className='tile-btn on';
+
+  // Info chip
+  const names = {ztm:'ZTM ČÚZK — Základní topografická mapa', orto:'Ortofoto ČÚZK'};
+  const chip = document.getElementById('tile-info');
+  chip.textContent = names[key];
+  chip.classList.add('show');
+  setTimeout(()=>chip.classList.remove('show'), 2200);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  LAYER THEME — klasifikace dle názvu json_* proměnné
+// ════════════════════════════════════════════════════════════════
+const LAYER_THEME = {
+  hranice_budovy:      { label:'Hranice budov',           color:'#94a3b8', grp:'Budovy',  w:1,   fo:.15 },
+  budova:              { label:'Budovy',                   color:'#a78bfa', grp:'Budovy',  w:1,   fo:.65 },
+  parkovit:            { label:'Parkoviště',               color:'#78716c', grp:'Doprava', w:1,   fo:.55 },
+  provozn_plocha:      { label:'Provozní plocha kom.',     color:'#57534e', grp:'Doprava', w:1,   fo:.5  },
+  obvod_pozemn:        { label:'Obvod komunikace',         color:'#f59e0b', grp:'Doprava', w:1.5, fo:.0  },
+  obvod_drhy:          { label:'Obvod dráhy',              color:'#d97706', grp:'Doprava', w:1.5, fo:.0  },
+  chodnk:              { label:'Chodníky',                 color:'#cbd5e1', grp:'Doprava', w:1,   fo:.4  },
+  souhrnn_plocha_elez: { label:'Plocha žel. drah',         color:'#92400e', grp:'Doprava', w:1,   fo:.5  },
+  cyklostezka:         { label:'Cyklostezky',              color:'#10b981', grp:'Doprava', w:2,   fo:.0  },
+};
+
+function classifyLayer(varName) {
+  const n = varName.toLowerCase();
+  for(const [key, theme] of Object.entries(LAYER_THEME)) {
+    if(n.includes(key)) return { ...theme };
+  }
+  return { label: varName.replace(/^json_/,'').replace(/_\d+$/,'').slice(0,30), color:'#64748b', grp:'Ostatní', w:1, fo:.4 };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  HIGHLIGHT (qgis2web kompatibilní)
+// ════════════════════════════════════════════════════════════════
+let highlightLayer;
+function highlightFeature(e) {
+  highlightLayer = e.target;
+  const gt = e.target.feature?.geometry?.type || '';
+  if(gt.includes('Line')) {
+    highlightLayer.setStyle({color:'#facc15', weight:3});
+  } else {
+    highlightLayer.setStyle({fillColor:'#facc15', fillOpacity:.9});
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  QGIS VRSTVY — auto-detect json_* proměnné
+// ════════════════════════════════════════════════════════════════
+const qgisLayers = [];
+
+function initQGISLayers() {
+  const jsVars = Object.keys(window).filter(k => k.startsWith('json_') && typeof window[k]==='object' && window[k]!==null);
+  if(!jsVars.length) return;
+
+  document.getElementById('qgis-sec').style.display = 'block';
+  const listEl = document.getElementById('qgis-layer-list');
+
+  // Seskup
+  const groups = {};
+  jsVars.forEach(v => {
+    const t = classifyLayer(v);
+    if(!groups[t.grp]) groups[t.grp] = [];
+    groups[t.grp].push({varName:v, theme:t});
+  });
+
+  let zIdx = 401;
+
+  for(const [grpName, items] of Object.entries(groups)) {
+    // Header skupiny
+    const gh = document.createElement('div');
+    gh.className = 'ql-grp-lbl';
+    gh.textContent = grpName;
+    listEl.appendChild(gh);
+
+    items.forEach(({varName, theme}) => {
+      ld('Registruji: ' + theme.label);
+      const raw = window[varName];
+      if(!raw) return;
+
+      // Odstraň null geometrie
+      const clean = {
+        ...raw,
+        features: (raw.features||[]).filter(f => f.geometry?.coordinates)
+      };
+      const nullCnt = (raw.features||[]).length - clean.features.length;
+      if(nullCnt) console.info(`${theme.label}: přeskočeno ${nullCnt}× null geom.`);
+
+      const styleObj = {
+        pane: 'pane_'+varName,
+        color: theme.color, weight: theme.w||1,
+        fillColor: theme.color, fillOpacity: theme.fo??0.5,
+        opacity: .92, interactive: true
+      };
+
+      map.createPane('pane_'+varName);
+      map.getPane('pane_'+varName).style.zIndex = zIdx++;
+
+      const leafletLayer = L.geoJSON(clean, {
+        pane: 'pane_'+varName,
+        style: () => ({ ...styleObj }),
+        pointToLayer: (f,ll) => L.circleMarker(ll, {...styleObj, radius:5}),
+        onEachFeature(feature, layer) {
+          layer.on({
+            mouseout(e) {
+              for(const i in e.target._eventParents) {
+                if(typeof e.target._eventParents[i].resetStyle==='function')
+                  e.target._eventParents[i].resetStyle(e.target);
+              }
+            },
+            mouseover: highlightFeature
+          });
+
+          // Dynamický popup ze všech atributů
+          const props = feature.properties || {};
+          const rows = Object.entries(props)
+            .filter(([k,v]) => v!==null && v!=='')
+            .map(([k,v]) => `<tr>
+              <td>${k}</td>
+              <td>${typeof autolinker.link === 'function' ? autolinker.link(String(v)) : String(v)}</td>
+            </tr>`).join('');
+
+          const html = `
+            <div class="qpop-head">
+              <div class="qpop-swatch" style="background:${theme.color}"></div>
+              ${theme.label}
+            </div>
+            ${rows
+              ? `<table class="qpop-table">${rows}</table>`
+              : `<div style="padding:10px 14px;color:var(--muted);font-size:.74rem">Žádné atributy</div>`
+            }`;
+
+          layer.bindPopup(html, {maxHeight:340, maxWidth:280});
+        }
+      });
+
+      leafletLayer.addTo(map);
+      const entry = {varName, theme, leaflet:leafletLayer, visible:true};
+      qgisLayers.push(entry);
+      buildQLayerUI(entry, listEl);
+    });
+  }
+
+  // Přizpůsob zoom na data
+  try {
+    const fg = L.featureGroup(qgisLayers.map(l=>l.leaflet));
+    if(fg.getLayers().length) map.fitBounds(fg.getBounds().pad(.04));
+  } catch(e) {}
+}
+
+function buildQLayerUI(entry, container) {
+  const d = document.createElement('div');
+  d.className = 'ql-row';
+  d.innerHTML = `
+    <div class="ql-swatch" style="background:${entry.theme.color}"></div>
+    <span class="ql-name" id="qln-${entry.varName}">${entry.theme.label}</span>
+    <div class="tog sm on" id="qtog-${entry.varName}"></div>`;
+  d.onclick = () => {
+    entry.visible = !entry.visible;
+    document.getElementById('qtog-'+entry.varName).classList.toggle('on', entry.visible);
+    document.getElementById('qln-'+entry.varName).classList.toggle('dim', !entry.visible);
+    entry.visible ? entry.leaflet.addTo(map) : map.removeLayer(entry.leaflet);
+  };
+  container.appendChild(d);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  POI KONFIGURACE
+//
+//  POLE V QGIS ATRIBUTOVÉ TABULCE:
+//  nazev        | text  | Název provozovny
+//  kategorie    | text  | gastro / zdravi / sport / urad / obchod / sluzby
+//  podkategorie | text  | restaurace / lekar / kadernictvi / …
+//  typ          | text  | Popisný typ (Restaurace, Praktický lékař, …)
+//  adresa       | text  | Hlučínská 95
+//  tel          | text  | +420 553 653 802
+//  web          | text  | https://www.bolatice.cz
+//  email        | text  | info@provozovna.cz
+//  ico          | text  | 12345678
+//  provoz       | text  | Po–Pá 8:00–17:00
+//  foto         | text  | foto/nazev_provozovny.jpg   ← relativní cesta od HTML
+//  popis        | text  | Volný popis / poznámka
+// ════════════════════════════════════════════════════════════════
+const CAT_CFG = {
+  gastro: {
+    label:'Gastronomie', color:'#f97316', icon:'🍽️',
+    subs:{
+      restaurace:  { label:'Restaurace',   icon:'🍽️', color:'#fb923c' },
+      hospoda:     { label:'Hospoda/Bar',  icon:'🍺', color:'#f97316' },
+      kavarna:     { label:'Kavárna',      icon:'☕', color:'#d97706' },
+      fast_food:   { label:'Fast food',    icon:'🍔', color:'#fbbf24' },
+      pizzeria:    { label:'Pizzeria',     icon:'🍕', color:'#ef4444' },
+    }
+  },
+  zdravi: {
+    label:'Zdravotnictví', color:'#06b6d4', icon:'🏥',
+    subs:{
+      lekar:       { label:'Praktický lékař',icon:'👨‍⚕️', color:'#06b6d4' },
+      zubar:       { label:'Zubař',          icon:'🦷', color:'#22d3ee' },
+      lekarna:     { label:'Lékárna',        icon:'💊', color:'#67e8f9' },
+      specialista: { label:'Specialista',    icon:'🩺', color:'#0ea5e9' },
+    }
+  },
+  sport: {
+    label:'Sport & volný čas', color:'#10b981', icon:'⚽',
+    subs:{
+      sport_ven:   { label:'Venkovní sport', icon:'⚽', color:'#10b981' },
+      sport_hal:   { label:'Hala/Tělocvična',icon:'🏋️', color:'#059669' },
+      detske:      { label:'Dětské hřiště',  icon:'🛝', color:'#34d399' },
+      turistika:   { label:'Turistika',      icon:'🥾', color:'#6ee7b7' },
+    }
+  },
+  urad: {
+    label:'Úřady & instituce', color:'#3b82f6', icon:'🏛️',
+    subs:{
+      urad_obec:   { label:'Obecní úřad',    icon:'🏛️', color:'#3b82f6' },
+      skola:       { label:'Škola',           icon:'🏫', color:'#60a5fa' },
+      cirkev:      { label:'Kostel/Kaple',   icon:'⛪', color:'#93c5fd' },
+      posta:       { label:'Pošta',           icon:'📮', color:'#6366f1' },
+    }
+  },
+  obchod: {
+    label:'Obchody', color:'#f59e0b', icon:'🛒',
+    subs:{
+      potraviny:   { label:'Potraviny',       icon:'🛒', color:'#f59e0b' },
+      smisene:     { label:'Smíšené zboží',  icon:'🏪', color:'#fbbf24' },
+      elektro:     { label:'Elektro',         icon:'🔌', color:'#fcd34d' },
+    }
+  },
+  sluzby: {
+    label:'Služby', color:'#8b5cf6', icon:'🔧',
+    subs:{
+      kadernictvi: { label:'Kadeřnictví',    icon:'✂️',  color:'#a78bfa' },
+      kosmetika:   { label:'Kosmetika',      icon:'💄',  color:'#c084fc' },
+      auto:        { label:'Auto-moto',      icon:'🔧',  color:'#f97316' },
+      finance:     { label:'Banka/Pojišť.', icon:'🏦',  color:'#60a5fa' },
+      ubytovani:   { label:'Ubytování',      icon:'🏨',  color:'#34d399' },
+      ostatni:     { label:'Ostatní',        icon:'⚙️',  color:'#94a3b8' },
+    }
+  }
+};
+
+// DEMO POI (nahradí se tvými daty z QGIS)
+const DEMO_POI = {"type":"FeatureCollection","features":[
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9655,49.9201]},"properties":{"nazev":"Obecní úřad Bolatice","kategorie":"urad","podkategorie":"urad_obec","typ":"Obecní úřad","adresa":"Hlučínská 95, Bolatice","tel":"+420 553 653 802","web":"https://www.bolatice.cz","provoz":"Po,St 7:30–12:00, 13:00–17:00"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9641,49.9195]},"properties":{"nazev":"Restaurace Na Radnici","kategorie":"gastro","podkategorie":"restaurace","typ":"Restaurace","adresa":"Náměstí 12, Bolatice","tel":"+420 601 111 222","provoz":"Po–Ne 11:00–22:00","foto":"foto/restaurace_radnice.jpg"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9670,49.9215]},"properties":{"nazev":"Pizzeria Roma","kategorie":"gastro","podkategorie":"pizzeria","typ":"Pizzeria","adresa":"Hlučínská 22, Bolatice","tel":"+420 602 333 444","provoz":"Út–Ne 11:00–21:00"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9635,49.9220]},"properties":{"nazev":"TJ Bolatice – fotbal","kategorie":"sport","podkategorie":"sport_ven","typ":"Fotbalový areál","adresa":"Sportovní 5, Bolatice","web":"","popis":"Fotbalové hřiště TJ Bolatice, travnatá i umělá plocha"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9680,49.9185]},"properties":{"nazev":"Kadeřnictví Jana","kategorie":"sluzby","podkategorie":"kadernictvi","typ":"Kadeřnictví","adresa":"Opavská 8, Bolatice","tel":"+420 604 777 888","provoz":"Po–Pá 8:00–17:00, So 8:00–12:00"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9660,49.9230]},"properties":{"nazev":"Lékárna Bolatice","kategorie":"zdravi","podkategorie":"lekarna","typ":"Lékárna","adresa":"Hlučínská 55, Bolatice","tel":"+420 553 123 456","provoz":"Po–Pá 7:30–16:30"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9645,49.9208]},"properties":{"nazev":"Penny Market","kategorie":"obchod","podkategorie":"potraviny","typ":"Supermarket","adresa":"Opavská 33, Bolatice","web":"https://www.penny.cz","provoz":"Po–Ne 7:00–21:00"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9700,49.9200]},"properties":{"nazev":"ZŠ Bolatice","kategorie":"urad","podkategorie":"skola","typ":"Základní škola","adresa":"Školní 1, Bolatice","tel":"+420 553 653 900","web":"https://www.zsbolatice.cz"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9622,49.9198]},"properties":{"nazev":"Kosmetika Krása","kategorie":"sluzby","podkategorie":"kosmetika","typ":"Kosmetický salon","adresa":"Mírová 3, Bolatice","tel":"+420 605 222 333"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9690,49.9240]},"properties":{"nazev":"Tenisové kurty","kategorie":"sport","podkategorie":"sport_ven","typ":"Tenisový areál","adresa":"Lesní 2, Bolatice"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9630,49.9185]},"properties":{"nazev":"MUDr. Kovářová","kategorie":"zdravi","podkategorie":"lekar","typ":"Praktický lékař","adresa":"Hlučínská 12, Bolatice","tel":"+420 553 654 100","provoz":"Po,St,Pá 7:30–12:00"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9665,49.9195]},"properties":{"nazev":"Hospoda u Petra","kategorie":"gastro","podkategorie":"hospoda","typ":"Hospoda","adresa":"Náměstí 5, Bolatice","tel":"+420 607 888 999","provoz":"Po–Pá 14:00–23:00, So–Ne 12:00–24:00"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9648,49.9212]},"properties":{"nazev":"Autoservis Kovář","kategorie":"sluzby","podkategorie":"auto","typ":"Autoservis","adresa":"Průmyslová 7, Bolatice","tel":"+420 606 444 555","provoz":"Po–Pá 7:00–16:00"}},
+  {"type":"Feature","geometry":{"type":"Point","coordinates":[17.9672,49.9202]},"properties":{"nazev":"Kostel sv. Martina","kategorie":"urad","podkategorie":"cirkev","typ":"Kostel","adresa":"Kostelní 1, Bolatice","popis":"Římskokatolický kostel, původ 13. stol.","foto":"foto/kostel.jpg"}},
+]};
+
+// ── POI STATE ──
+const poiGroup = L.featureGroup().addTo(map);
+const ST = {
+  features:[], catActive:{}, subActive:{}, searchQ:''
+};
+Object.keys(CAT_CFG).forEach(k => ST.catActive[k]=true);
+
+// ── ICONS ──
+function makeIcon(emoji, color, sz=34) {
+  const s=sz;
+  return L.divIcon({
+    html:`<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s+8}" viewBox="0 0 ${s} ${s+8}">
+      <defs><filter id="fs"><feDropShadow dx="0" dy="2" stdDeviation="2.5" flood-color="${color}" flood-opacity=".4"/></filter></defs>
+      <circle cx="${s/2}" cy="${s/2}" r="${s/2-1.5}" fill="${color}" filter="url(#fs)" opacity=".94"/>
+      <circle cx="${s/2}" cy="${s/2}" r="${s/2-5}" fill="rgba(255,255,255,.1)"/>
+      <text x="${s/2}" y="${s/2+5}" text-anchor="middle" font-size="${Math.round(s*.38)}">${emoji}</text>
+      <line x1="${s/2}" y1="${s-1.5}" x2="${s/2}" y2="${s+6}" stroke="${color}" stroke-width="1.8" opacity=".4"/>
+    </svg>`,
+    className:'', iconSize:[s,s+8], iconAnchor:[s/2,s+8], popupAnchor:[0,-(s+8)]
+  });
+}
+
+// ── SUBCAT UI ──
+function buildSubUI() {
+  const el = document.getElementById('sub-sluzby'); el.innerHTML='';
+  const subs = CAT_CFG.sluzby.subs;
+  for(const [k, sub] of Object.entries(subs)) {
+    if(ST.subActive[k]===undefined) ST.subActive[k]=true;
+    const d=document.createElement('div');
+    d.className='sub-row'+(ST.subActive[k]?' on':''); d.id='subrow-'+k;
+    d.innerHTML=`<div class="sub-pip" style="background:${sub.color}"></div>
+      <span>${sub.icon} ${sub.label}</span>
+      <div class="tog sm ${ST.subActive[k]?'on v':''}" id="subtog-${k}" style="margin-left:auto"></div>`;
+    d.onclick=()=>toggleSub(k);
+    el.appendChild(d);
+  }
+}
+
+// Dynamicky přidej subkategorie z dat pokud nejsou v konfigu
+function ensureSubcat(cat, subKey) {
+  if(cat !== 'sluzby') return;
+  if(!CAT_CFG.sluzby.subs[subKey]) {
+    CAT_CFG.sluzby.subs[subKey] = {label:subKey, icon:'⚙️', color:'#94a3b8'};
+  }
+  if(ST.subActive[subKey]===undefined) ST.subActive[subKey]=true;
+}
+
+function toggleSubList() {
+  document.getElementById('sub-sluzby').classList.toggle('x');
+  document.getElementById('cat-sluzby-hd').classList.toggle('x');
+}
+
+// ── POI LOAD ──
+async function loadPOI() {
+  let gj=null, src='[DEMO]';
+  const tries = ['data/bolatice_poi.geojson','data/bolatice_poi.js','data/poi.geojson'];
+  for(const p of tries) {
+    try { const r=await fetch(p); if(r.ok){gj=await r.json();src=p;break;} } catch(e){}
+  }
+  if(!gj) { gj=DEMO_POI; }
+  badge(src==='[DEMO]' ? '📍 Demo POI data' : '✅ POI: '+src);
+  processPOI(gj);
+}
+
+function processPOI(gj) {
+  ST.features = (gj.features||[]).filter(f=>f.geometry?.type==='Point'&&f.geometry.coordinates);
+  ST.features.forEach(f=>{
+    const p=f.properties;
+    if(p.kategorie && p.podkategorie) ensureSubcat(p.kategorie, p.podkategorie);
+  });
+  buildSubUI();
+  renderPOI();
+  updateCounts();
+  renderResults();
+}
+
+// ── RENDER POI ──
+function renderPOI() {
+  poiGroup.clearLayers();
+  ST.features.forEach(f=>{
+    const p=f.properties;
+    const cat=CAT_CFG[p.kategorie];
+    if(!cat || !ST.catActive[p.kategorie]) return;
+    if(p.kategorie==='sluzby' && p.podkategorie && ST.subActive[p.podkategorie]===false) return;
+    if(ST.searchQ) {
+      const q=ST.searchQ.toLowerCase();
+      if(![(p.nazev||''),(p.adresa||''),(p.typ||''),(p.podkategorie||'')].some(s=>s.toLowerCase().includes(q))) return;
+    }
+    let color=cat.color, icon=cat.icon;
+    const subCfg = cat.subs?.[p.podkategorie];
+    if(subCfg) { color=subCfg.color; icon=subCfg.icon; }
+
+    const [lng,lat]=f.geometry.coordinates;
+    const m=L.marker([lat,lng],{icon:makeIcon(icon,color)});
+    m.feature=f;
+    m.bindPopup(buildPOIPopup(p,color,icon), {maxWidth:300});
+    poiGroup.addLayer(m);
+  });
+}
+
+// ── POI POPUP s FOTO ──
+function buildPOIPopup(p, color, icon) {
+  const cat = CAT_CFG[p.kategorie];
+  const subCfg = cat?.subs?.[p.podkategorie];
+  const typLabel = p.typ || subCfg?.label || cat?.label || '';
+
+  // FOTO — podporuje: JPG, PNG, WEBP. Cesta relativní od HTML souboru.
+  // V QGIS: pole foto = "foto/nazev_objektu.jpg"
+  let fotoHtml = '';
+  if(p.foto) {
+    fotoHtml = `<img
+      class="ppop-photo"
+      src="${p.foto}"
+      alt="${p.nazev||''}"
+      onclick="openLightbox(this.src)"
+      onerror="this.parentNode.innerHTML='<div class=ppop-photo-placeholder>${icon}</div>'"
+    >`;
+  }
+
+  // Detaily
+  let rows = '';
+  if(p.adresa)  rows += row('📍', p.adresa);
+  if(p.tel)     rows += row('📞', `<a href="tel:${p.tel}">${p.tel}</a>`);
+  if(p.provoz)  rows += row('🕐', p.provoz);
+  if(p.web)     rows += row('🌐', `<a href="${p.web}" target="_blank">${p.web.replace(/https?:\/\//,'')}</a>`);
+  if(p.email)   rows += row('✉️', `<a href="mailto:${p.email}">${p.email}</a>`);
+  if(p.ico)     rows += row('🏢', 'IČO: '+p.ico);
+  if(p.popis)   rows += row('ℹ️', p.popis);
+
+  const nav=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent((p.nazev||'')+ ' Bolatice')}`;
+
+  return `
+    ${fotoHtml}
+    <div class="ppop-head">
+      <div class="ppop-badge" style="background:${color}1a;color:${color}">${icon} ${typLabel}</div>
+      <div class="ppop-name">${p.nazev||'Bez názvu'}</div>
+    </div>
+    ${rows ? `<div class="ppop-div"></div><div style="padding-bottom:8px">${rows}</div>` : ''}
+    <div class="ppop-foot">
+      <button class="ppop-btn" onclick="window.open('${nav}','_blank')">🗺 Navigace</button>
+      ${p.web ? `<button class="ppop-btn" onclick="window.open('${p.web}','_blank')">🌐 Web</button>` : ''}
+      ${p.tel ? `<button class="ppop-btn" onclick="window.open('tel:${p.tel}')">📞 Volat</button>` : ''}
+    </div>`;
+}
+
+function row(ico, val) {
+  return `<div class="ppop-row"><div class="ppop-i">${ico}</div><div class="ppop-v">${val}</div></div>`;
+}
+
+// LIGHTBOX
+function openLightbox(src) {
+  document.getElementById('lightbox-img').src = src;
+  document.getElementById('lightbox').classList.add('on');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('on');
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLightbox(); });
+
+// ── COUNTS & RESULTS ──
+function updateCounts() {
+  const c={};
+  Object.keys(CAT_CFG).forEach(k=>c[k]=0);
+  ST.features.forEach(f=>{ const k=f.properties.kategorie; if(k in c) c[k]++; });
+  Object.entries(c).forEach(([k,v])=>{ const e=document.getElementById('cnt-'+k); if(e) e.textContent=v; });
+}
+
+function renderResults() {
+  const list=document.getElementById('res-list'); list.innerHTML='';
+  const vis = ST.features.filter(f=>{
+    const p=f.properties;
+    if(!ST.catActive[p.kategorie]) return false;
+    if(p.kategorie==='sluzby' && p.podkategorie && ST.subActive[p.podkategorie]===false) return false;
+    if(ST.searchQ) {
+      const q=ST.searchQ.toLowerCase();
+      if(![(p.nazev||''),(p.adresa||''),(p.typ||''),(p.podkategorie||'')].some(s=>s.toLowerCase().includes(q))) return false;
+    }
+    return true;
+  });
+  document.getElementById('res-cnt').textContent=vis.length;
+  vis.forEach(f=>{
+    const p=f.properties; const cat=CAT_CFG[p.kategorie];
+    let color=cat?cat.color:'#888', icon=cat?cat.icon:'📍';
+    const subCfg=cat?.subs?.[p.podkategorie];
+    if(subCfg){color=subCfg.color;icon=subCfg.icon;}
+    const [lng,lat]=f.geometry.coordinates;
+    const d=document.createElement('div'); d.className='res-row';
+    d.innerHTML=`<div class="res-ico" style="background:${color}18">${icon}</div>
+      <div class="res-info">
+        <div class="res-name">${p.nazev||'Bez názvu'}</div>
+        <div class="res-sub">${p.typ||subCfg?.label||cat?.label||''}${p.adresa?' · '+p.adresa:''}</div>
+      </div>`;
+    d.onclick=()=>{
+      map.setView([lat,lng],17);
+      poiGroup.eachLayer(m=>{ if(m.feature?.properties?.nazev===p.nazev) m.openPopup(); });
+    };
+    list.appendChild(d);
+  });
+}
+
+// ── FILTER ──
+function toggleCat(k) {
+  ST.catActive[k]=!ST.catActive[k];
+  document.getElementById('tog-'+k)?.classList.toggle('on',ST.catActive[k]);
+  renderPOI(); renderResults();
+}
+function toggleSub(k) {
+  ST.subActive[k]=!ST.subActive[k];
+  document.getElementById('subtog-'+k)?.classList.toggle('on',ST.subActive[k]);
+  document.getElementById('subtog-'+k)?.classList.toggle('v',ST.subActive[k]);
+  document.getElementById('subrow-'+k)?.classList.toggle('on',ST.subActive[k]);
+  renderPOI(); renderResults();
+}
+function doSearch(q) { ST.searchQ=q.trim(); renderPOI(); renderResults(); }
+
+// ── SIDEBAR ──
+let sbOpen=true;
+function toggleSidebar() {
+  sbOpen=!sbOpen;
+  document.getElementById('sidebar').classList.toggle('closed',!sbOpen);
+  const h=document.getElementById('sb-handle');
+  h.classList.toggle('closed',!sbOpen);
+  h.textContent=sbOpen?'◀':'▶';
+  document.getElementById('sb-hbtn').classList.toggle('on',sbOpen);
+}
+
+// ── GEOLOCATION ──
+let geoMarker=null;
+function geolocate() {
+  const btn=document.getElementById('fab-geo');
+  if(!navigator.geolocation){alert('Geolokace není dostupná.');return;}
+  btn.classList.add('on');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const{latitude:lat,longitude:lng,accuracy:acc}=pos.coords;
+    if(geoMarker) map.removeLayer(geoMarker);
+    const ico=L.divIcon({
+      html:`<div style="width:13px;height:13px;background:#3b82f6;border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px #3b82f6aa"></div>`,
+      className:'', iconSize:[13,13], iconAnchor:[6.5,6.5]
+    });
+    geoMarker=L.marker([lat,lng],{icon:ico}).addTo(map).bindPopup('<div style="padding:8px 10px;font-family:DM Sans;font-size:.78rem;background:#161b27;color:#e2e8f0;border-radius:8px">📍 Vaše poloha<br><span style="color:#7c8aaa;font-size:.68rem">±'+Math.round(acc)+' m</span></div>');
+    L.circle([lat,lng],{radius:acc,color:'#3b82f6',fillColor:'#3b82f6',fillOpacity:.07,weight:1}).addTo(map);
+    map.setView([lat,lng],16);
+    btn.classList.remove('on');
+  },err=>{btn.classList.remove('on');alert('Chyba geolokace: '+err.message);});
+}
+
+// ── MEASURE ──
+let msrOn=false, mPts=[], mLines=[], mDots=[];
+function toggleMsr() {
+  msrOn=!msrOn;
+  document.getElementById('fab-msr').classList.toggle('on',msrOn);
+  document.getElementById('msr-panel').classList.toggle('on',msrOn);
+  if(msrOn){map.getContainer().style.cursor='crosshair';map.on('click',mClick);map.on('dblclick',mDbl);}
+  else clearMsr();
+}
+function mClick(e){
+  if(!msrOn)return;
+  mPts.push(e.latlng);
+  mDots.push(L.circleMarker(e.latlng,{radius:5,color:'#7c3aed',fillColor:'#7c3aed',fillOpacity:1,weight:2}).addTo(map));
+  if(mPts.length>1){mLines.push(L.polyline(mPts,{color:'#7c3aed',weight:2,dashArray:'5,4',opacity:.85}).addTo(map));mCalc();}
+}
+function mDbl(){map.off('click',mClick);map.off('dblclick',mDbl);msrOn=false;document.getElementById('fab-msr').classList.remove('on');map.getContainer().style.cursor='';}
+function mCalc(){let t=0;for(let i=1;i<mPts.length;i++)t+=mPts[i-1].distanceTo(mPts[i]);document.getElementById('msr-val').textContent=t>=1000?`${(t/1000).toFixed(2)} km`:`${Math.round(t)} m`;}
+function clearMsr(){mPts=[];mLines.forEach(l=>map.removeLayer(l));mLines=[];mDots.forEach(m=>map.removeLayer(m));mDots=[];document.getElementById('msr-val').textContent='0 m';document.getElementById('msr-panel').classList.remove('on');map.off('click',mClick);map.off('dblclick',mDbl);map.getContainer().style.cursor='';msrOn=false;document.getElementById('fab-msr').classList.remove('on');}
+
+// ── HELPERS ──
+let bT;
+function badge(msg){const e=document.getElementById('dbadge');e.textContent=msg;e.classList.remove('fade');clearTimeout(bT);bT=setTimeout(()=>e.classList.add('fade'),4500);}
+function ld(msg){const e=document.getElementById('ld-sub');if(e)e.textContent=msg;}
+
+// ════════════════════════════════════════════════════════════════
+//  INIT
+// ════════════════════════════════════════════════════════════════
+window.addEventListener('load', async () => {
+  ld('Registruji DMVS vrstvy…');
+  initQGISLayers();
+
+  ld('Načítám POI data…');
+  await loadPOI();
+
+  // POI vždy navrch
+  poiGroup.bringToFront();
+
+  ld('Hotovo');
+  document.getElementById('loading').classList.add('out');
+  setTimeout(()=>document.getElementById('loading').remove(), 500);
+});
+</script>
+</body>
+</html>
